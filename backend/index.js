@@ -2,7 +2,7 @@ const express = require("express");
 const connectDB = require("./connectDb");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
-const bs58 = require("bs58");
+const bs58 = require("bs58").default;
 const cors = require("cors");
 const { userModel } = require("./models");
 const { Keypair, Transaction, Connection } = require("@solana/web3.js");
@@ -33,7 +33,7 @@ app.post("/api/v1/signup", async (req, res, next) => {
       return res.status(409).json({ message: "Username already exists" });
     }
 
-    const keypair = Keypair.generate();
+    const keypair = await Keypair.generate();
 
     const user = await userModel.create({
       username,
@@ -68,7 +68,7 @@ app.post("/api/v1/signin", async (req, res, next) => {
       { expiresIn: "1h" },
     );
 
-    res.json({ token });
+    res.json({ token, publicKey: user.publicKey });
   } catch (error) {
     next(error);
   }
@@ -81,10 +81,24 @@ app.post("/api/v1/txn/sign", async (req, res, next) => {
       ? authHeader.split(" ")[1]
       : null;
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    if (!token) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch {
+      return res.status(401).json({ message: "Invalid or expired token" });
+    }
 
     const user = await userModel.findOne({ username: decoded.username });
+    if (!user) {
+      return res.status(401).json({ message: "User not found" });
+    }
+
     const secretKey = bs58.decode(user.privateKey);
+
     const keypair = Keypair.fromSecretKey(secretKey);
 
     const serializedTx = req.body.message;
