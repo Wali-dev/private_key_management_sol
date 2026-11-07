@@ -2,10 +2,18 @@ const express = require("express");
 const connectDB = require("./connectDb");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
-const bs58 = require("bs58").default;
+
 const cors = require("cors");
 const { userModel } = require("./models");
-const { Keypair, Transaction, Connection } = require("@solana/web3.js");
+const {
+  Keypair,
+  Transaction,
+  SystemProgram,
+  Connection,
+  LAMPORTS_PER_SOL,
+} = require("@solana/web3.js");
+
+const bs58 = require("bs58").default;
 require("dotenv").config();
 
 const app = express();
@@ -17,7 +25,7 @@ connectDB();
 
 //Create the connection object
 const connection = new Connection(
-  process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com",
+  process.env.SOLANA_RPC_URL || "https://api.testnet.solana.com",
 );
 
 app.get("/", (req, res) => {
@@ -68,7 +76,14 @@ app.post("/api/v1/signin", async (req, res, next) => {
       { expiresIn: "1h" },
     );
 
-    res.json({ token, publicKey: user.publicKey });
+    const balance = await checkSolBalanceCall(user.publicKey);
+
+    res.json({
+      status: "ok",
+      token,
+      publicKey: user.publicKey,
+      balance: balance.result.value,
+    });
   } catch (error) {
     next(error);
   }
@@ -93,21 +108,38 @@ app.post("/api/v1/txn/sign", async (req, res, next) => {
     }
 
     const user = await userModel.findOne({ username: decoded.username });
+
     if (!user) {
       return res.status(401).json({ message: "User not found" });
     }
 
     const secretKey = bs58.decode(user.privateKey);
-
     const keypair = Keypair.fromSecretKey(secretKey);
 
-    const serializedTx = req.body.message;
-    const tx = Transaction.from(serializedTx);
-    await tx.signAsync(keypair);
+    const serializedTx = Buffer.from(req.body.message, "base64");
 
-    const signature = await connection.sendRawTransaction(tx.serialize());
+    const tx = Transaction.from(serializedTx);
+
+    if (!tx.feePayer || !tx.feePayer.equals(keypair.publicKey)) {
+      return res.status(403).json({
+        success: false,
+        message: "Invalid transaction fee payer",
+      });
+    }
+
+    //Sign transaction
+    tx.partialSign(keypair);
+
+    //Serialize signed transaction
+    const signedTx = tx.serialize();
+
+    const signature = await connection.sendRawTransaction(signedTx);
+
     const confirmation = await connection.confirmTransaction(
-      signature,
+      {
+        signature,
+        blockhash: tx.recentBlockhash,
+      },
       "confirmed",
     );
 
@@ -116,6 +148,26 @@ app.post("/api/v1/txn/sign", async (req, res, next) => {
     next(error);
   }
 });
+
+async function checkSolBalanceCall(address) {
+  try {
+    const res = await fetch(process.env.SOLANA_RPC_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "getBalance",
+        params: [`${address}`],
+      }),
+    });
+    return res.json();
+  } catch (error) {
+    console.error(error);
+  }
+}
 
 app.use((err, req, res, next) => {
   console.error(err);
