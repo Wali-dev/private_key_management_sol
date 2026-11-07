@@ -167,7 +167,7 @@
 
   &::before,
   &::after {
-    content: '';
+    content: "";
     position: absolute;
     top: -4.5px;
     border: 5px solid transparent;
@@ -181,4 +181,23 @@
     right: 0;
     border-right-color: var(--border);
   }
+}
+
+.hero {
+  /* background-color: brown; */
+  display: flex;
+  justify-content: space-between;
+}
+
+.balance {
+  /* background-color: aquamarine; */
+  display: flex;
+  justify-items: center;
+  align-items: center;
+  gap: 4px;
+}
+
+.balance-text {
+  margin-bottom: -10px;
+  /* bottom: 0px; */
 }

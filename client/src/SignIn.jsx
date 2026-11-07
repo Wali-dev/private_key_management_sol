@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./SignIn.css";
+import axios from "axios";
+
+axios.defaults.baseURL = "http://localhost:8000";
 
 function isTokenValid(token) {
   if (!token) return false;
@@ -32,13 +35,11 @@ export default function SignIn() {
     setError("");
 
     try {
-      const response = await fetch("http://localhost:8000/api/v1/signin", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ username, password }),
-      });
+      const response = await axios.post(
+        "api/v1/signin",
+        { username, password },
+        { headers: { "Content-Type": "application/json" } },
+      );
 
       const data = await response.json().catch(() => ({}));
 
@@ -52,6 +53,7 @@ export default function SignIn() {
 
       localStorage.setItem("token", data.token);
       localStorage.setItem("publicKey", data.publicKey);
+      localStorage.setItem("balance", data.balance);
 
       navigate("/", { replace: true });
     } catch (err) {
